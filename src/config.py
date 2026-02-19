@@ -5,8 +5,8 @@ import os
 # Path that app will monitor
 WATCH_DIRECTORIES = [
     os.path.expanduser("~/Downloads"),     
-    os.path.expanduser("~/Desktop"),       
-    os.path.expanduser("~/Documents"),    
+    #os.path.expanduser("~/Desktop"),       
+    #os.path.expanduser("~/Documents"),    
 ]
 
 # temporary paths where files will be move to choice
@@ -100,4 +100,5 @@ BEGINNER_MODE = True
 RESET = '\033[0m'
 GREEN = '\033[32m'
 YELLOW = '\033[33m'
+RESET = '\033[0m'
 # ... outras cores se necessário

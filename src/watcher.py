@@ -1,4 +1,3 @@
-# watcher.py
 from watchdog.events import FileSystemEventHandler
 import time
 

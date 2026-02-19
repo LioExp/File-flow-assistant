@@ -7,7 +7,7 @@ import time
 
 if __name__ == "__main__":
     #create the logger (with files log optional)
-    logger = ColoredLogger(log_file='log/fileflow.log')
+    logger = ColoredLogger(log_file='logs/fileflow.log')
     
     #Cria o detector de duplicatas (passando o logger e as pastas monitoradas)
     detector = DuplicateDetector(logger, WATCH_DIRECTORIES)
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     print("File Flow Assistant started!")
     print(f"Monitoring: {WATCH_DIRECTORIES}")
 
-    # 3. Passa o logger E o detector para o handler
+    # Passa o logger E o detector para o handler
     handler = FileFlowHandler(logger, detector)
     observer = Observer()
 

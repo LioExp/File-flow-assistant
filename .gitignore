@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+fileflow.log
+fileflow.db
+logs/
+.DS_Store
+.vscode/
+.idea/
+*.swp

@@ -7,8 +7,8 @@
 
 ---
 
-🚀 Funcionalidades (Fase 1)
-Funcionalidade	Descrição
+🚀 Funcionalidades (Fase 1):
+
 Monitoramento em tempo real	Observa pastas configuradas e reage a novos arquivos.
 Deteção de duplicatas	Calcula hash SHA‑256 para cada arquivo e identifica duplicados (apenas relatório – não apaga automaticamente).
 Soft delete	Move arquivos apagados para uma lixeira oculta (~/.fileflow_trash) em vez de eliminar definitivamente. Os arquivos ficam disponíveis por 30 dias.

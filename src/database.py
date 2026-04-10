@@ -1,4 +1,3 @@
-# database.py
 import sqlite3
 import os
 import json
@@ -45,3 +44,13 @@ class FileIndex:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute('SELECT 1 FROM files WHERE path = ?', (path,))
             return cursor.fetchone() is not None
+        
+    def get_file_info(self, path):
+        """Retorna as informações de um arquivo pelo caminho, ou None se não existir."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute('SELECT size, hash, last_modified FROM files WHERE path = ?', (path,))
+            row = cursor.fetchone()
+            if row:
+                return {'size': row[0], 'hash': row[1], 'last_modified': row[2]}
+        return None    
+    

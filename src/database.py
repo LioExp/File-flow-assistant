@@ -53,4 +53,4 @@ class FileIndex:
             if row:
                 return {'size': row[0], 'hash': row[1], 'last_modified': row[2]}
         return None    
-    
+

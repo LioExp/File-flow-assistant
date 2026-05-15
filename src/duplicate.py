@@ -18,7 +18,8 @@ class DuplicateDetector:
 
     def _scan_existing_files(self):
         self.logger.info("Scanning existing files for initial snapshot...")
-        
+
+        # Coleta todos os caminhos de arquivos
         file_paths = []
         for directory in self.watch_dirs:
             if not os.path.isdir(directory):
@@ -27,24 +28,50 @@ class DuplicateDetector:
             for root, _, files in os.walk(directory):
                 for file in files:
                     file_paths.append(os.path.join(root, file))
-        
+
         total_files = len(file_paths)
         if total_files == 0:
             self.logger.info("No files found in monitored directories.")
             return
 
+        from progress import ProgressBar
+        from config import GREEN
         bar = ProgressBar(total=total_files, prefix="Indexing", color=GREEN)
-        
+
+        new_files = 0
+        modified_files = 0
+        unchanged_files = 0
+
         for path in file_paths:
+            # Verifica se o arquivo já está no banco
+            info = self.index.get_file_info(path)
+            if info:
+                try:
+                    current_mtime = os.path.getmtime(path)
+                    current_mtime_str = datetime.fromtimestamp(current_mtime).isoformat()
+                    if info['last_modified'] == current_mtime_str:
+                        unchanged_files += 1
+                        bar.update()
+                        continue
+                    else:
+                        modified_files += 1
+
+                except OSError:
+                    modified_files += 1  # se não conseguir ler, trata como modificado
+            else:
+                new_files += 1
+
+            # Se chegou aqui, é novo ou modificado → processa
             self._process_file(path)
             bar.update()
-        
-        self.logger.info(f"Initial snapshot complete. Total files indexed: {total_files}")
+
+        self.logger.info(f"Initial snapshot complete. Total: {total_files}, New: {new_files}, Modified: {modified_files}, Unchanged: {unchanged_files}")
         if self.duplicates_report:
             self.logger.warning(f"Found {len(self.duplicates_report)} duplicate files during scan.")
             for dup in self.duplicates_report:
                 self.logger.info(f"Duplicate: {dup['duplicate']} (original: {dup['original']})")
-
+                
+        
     def _calculate_hash(self, file_path: str) -> Optional[str]:
         hash_func = hashlib.new(self.hash_algo)
         try:
@@ -97,3 +124,5 @@ class DuplicateDetector:
 
     def generate_report(self):
         return self.duplicates_report
+    
+""" adicionar o bloco de codigo pra perguntar se o usuario quer gerar um arquivo de relatório(ATT: Não esquecer)"""    

@@ -5,8 +5,8 @@ import os
 # Path that app will monitor
 WATCH_DIRECTORIES = [
     os.path.expanduser("~/Downloads"),     
-    #os.path.expanduser("~/Desktop"),       
-    #os.path.expanduser("~/Documents"),    
+    os.path.expanduser("~/Desktop"),       
+    os.path.expanduser("~/Documents"),    
 ]
 
 # temporary paths where files will be move to choice

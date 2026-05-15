@@ -3,9 +3,7 @@ from datetime import datetime
 from config import GREEN, YELLOW, RESET
 
 class ColoredLogger:
-    """Logger com saída colorida no terminal e opcionalmente em arquivo."""
     
-    # Atributos de classe para as cores (podem ser sobrescritos por instância, se necessário)
     LEVEL_COLOR = YELLOW
     TEXT_COLOR = GREEN
 
@@ -13,9 +11,9 @@ class ColoredLogger:
         self.log_file = log_file
 
     def _write(self, text):
-        # Escreve no terminal com cores
+
         print(text)
-        # Se um arquivo de log foi especificado, escreve sem cores
+
         if self.log_file:
             # Remove os códigos ANSI para o arquivo
             clean = text.replace(GREEN, '').replace(YELLOW, '').replace(RESET, '')
@@ -48,5 +46,4 @@ class ColoredLogger:
     def error(self, message, path=None):
         self._write(self._format("ERROR", message, path))
 
-# Instância global (sem arquivo de log por padrão)
 logger = ColoredLogger()

@@ -1,5 +1,7 @@
 import os
-# ================================
+from pathlib import Path
+# ===============================
+# from pathlib import Pat
 # MAIN PATHS
 # ================================
 # Path that app will monitor
@@ -102,3 +104,8 @@ GREEN = '\033[32m'
 YELLOW = '\033[33m'
 RESET = '\033[0m'
 # ... outras cores se necessário
+#
+# RECICLÁVEL
+TRASH_DIR = Path(".fileflow_trash")
+METADATA_FILE = TRASH_DIR / "metadata.json"
+

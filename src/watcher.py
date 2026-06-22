@@ -2,6 +2,7 @@ from watchdog.events import FileSystemEventHandler
 import time
 import sys
 from trash import soft_delete
+from scanner import is_suspicious
 
 
 class FileFlowHandler(FileSystemEventHandler):
@@ -16,6 +17,10 @@ class FileFlowHandler(FileSystemEventHandler):
             return
         self.last_event[event.src_path] = ('created', time.time())
         self.logger.info("detected new file:", path=event.src_path)
+
+        if is_suspicious(event.src_path):
+            self.logger.warning(f"SUSPICIOUS file detected: {event.src_path}")
+
         self.detector.on_created(event.src_path)
 
     def on_modified(self, event):

@@ -27,6 +27,7 @@ from database import FileIndex
 from trash import soft_delete, verificar_lixeira
 from watch_config import load_dirs, add_dir, remove_dir
 from rules import load_rules, add_rule, remove_rule, Rule
+from scanner import VirusScanner, is_suspicious
 
 app = typer.Typer()
 console = Console()
@@ -424,3 +425,120 @@ def rules_remove(name: str):
     """Remove an organization rule by name."""
     remove_rule(name)
     console.print(f"[green]Rule removed:[/green] {name}")
+
+
+@app.command()
+def scanfile(file: str):
+    """Scan a single file for malware."""
+    scanner = VirusScanner()
+
+    if not scanner.is_available():
+        console.print("[red]No antivirus found.[/red]")
+        console.print("[dim]Install ClamAV (Linux): sudo apt install clamav[/dim]")
+        console.print("[dim]Windows Defender is built-in on Windows.[/dim]")
+        return
+
+    console.print(f"[dim]Using:[/dim] {scanner.get_backend_name()}")
+    console.print(f"[dim]Scanning:[/dim] {file}")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True
+    ) as progress:
+        progress.add_task("Scanning...", total=None)
+        result = scanner.scan_file(file)
+
+    if result['status'] == 'clean':
+        console.print(f"[green]CLEAN[/green] - {file}")
+    elif result['status'] == 'infected':
+        console.print(f"[bold red]INFECTED![/bold red] - {file}")
+        console.print(f"[red]Threat:[/red] {result.get('threat', 'unknown')}")
+    elif result['status'] == 'error':
+        console.print(f"[yellow]ERROR[/yellow] - {result.get('message', 'unknown')}")
+    elif result['status'] == 'unavailable':
+        console.print(f"[red]Scanner unavailable:[/red] {result.get('message', '')}")
+
+
+@app.command()
+def scandir(dir: str = typer.Argument(".", help="Directory to scan")):
+    """Scan a directory for malware."""
+    scanner = VirusScanner()
+
+    if not scanner.is_available():
+        console.print("[red]No antivirus found.[/red]")
+        console.print("[dim]Install ClamAV (Linux): sudo apt install clamav[/dim]")
+        console.print("[dim]Windows Defender is built-in on Windows.[/dim]")
+        return
+
+    console.print(f"[dim]Using:[/dim] {scanner.get_backend_name()}")
+    console.print(f"[dim]Scanning:[/dim] {dir}")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True
+    ) as progress:
+        progress.add_task("Scanning directory...", total=None)
+        results = scanner.scan_directory(dir)
+
+    clean = sum(1 for r in results if r['status'] == 'clean')
+    infected = [r for r in results if r['status'] == 'infected']
+    errors = sum(1 for r in results if r['status'] == 'error')
+
+    console.print(f"\n[green]Clean:[/green] {clean}")
+    console.print(f"[red]Infected:[/red] {len(infected)}")
+    if errors:
+        console.print(f"[yellow]Errors:[/yellow] {errors}")
+
+    if infected:
+        console.print("\n[bold red]INFECTED FILES:[/bold red]")
+        for r in infected:
+            console.print(f"  [red]{r['file']}[/red] - {r.get('threat', 'unknown')}")
+
+
+@app.command()
+def scanwatch():
+    """Scan all monitored directories for malware."""
+    scanner = VirusScanner()
+
+    if not scanner.is_available():
+        console.print("[red]No antivirus found.[/red]")
+        console.print("[dim]Install ClamAV (Linux): sudo apt install clamav[/dim]")
+        console.print("[dim]Windows Defender is built-in on Windows.[/dim]")
+        return
+
+    console.print(f"[dim]Using:[/dim] {scanner.get_backend_name()}")
+    console.print(f"[dim]Scanning monitored directories:[/dim] {WATCH_DIRECTORIES}")
+
+    total_clean = 0
+    total_infected = []
+
+    for directory in WATCH_DIRECTORIES:
+        if not os.path.isdir(directory):
+            console.print(f"[yellow]Skipping (not found):[/yellow] {directory}")
+            continue
+
+        console.print(f"\n[bold]Scanning {directory}...[/bold]")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True
+        ) as progress:
+            progress.add_task(f"Scanning {directory}...", total=None)
+            results = scanner.scan_directory(directory)
+
+        for r in results:
+            if r['status'] == 'clean':
+                total_clean += 1
+            elif r['status'] == 'infected':
+                total_infected.append(r)
+
+    console.print(f"\n{'='*50}")
+    console.print(f"[green]Total clean:[/green] {total_clean}")
+    console.print(f"[red]Total infected:[/red] {len(total_infected)}")
+
+    if total_infected:
+        console.print("\n[bold red]INFECTED FILES:[/bold red]")
+        for r in total_infected:
+            console.print(f"  [red]{r['file']}[/red] - {r.get('threat', 'unknown')}")

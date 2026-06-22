@@ -1,20 +1,16 @@
 import os
+import sys
 from pathlib import Path
-# ===============================
-# from pathlib import Pat
-# MAIN PATHS
-# ================================
-# Path that app will monitor
+
+if sys.platform == 'win32':
+    os.system('')
+
 WATCH_DIRECTORIES = [
-    #os.path.expanduser("~/Downloads"),     
-    os.path.expanduser("~/Desktop"),       
-    ##os.path.expanduser("~/Documents"),    
+    os.path.expanduser("~/Desktop"),
 ]
 
-# temporary paths where files will be move to choice
 TEMP_BASE_DIR = os.path.expanduser("~/file_flow_temp")
 
-# Subpastas automáticas dentro da temp (por categoria)
 TEMP_CATEGORIES = {
     '.pdf': 'Docs',
     '.txt': 'Docs',
@@ -25,44 +21,26 @@ TEMP_CATEGORIES = {
     '.mp4': 'Videos',
     '.zip': 'Compactados',
     '.rar': 'Compactados',
-    'default': 'Outros'  # Para extensões desconhecidas
+    'default': 'Outros'
 }
 
-# ================================
-# MONITORATION
-# ================================
-# Delay between checkin (em segundos)
-WATCH_DELAY = 5  
-
-# to Monitor sub paths too?
-WATCH_RECURSIVELY = False  # pra evitar complexidade ainda
-
-# Monitorar criação de pastas também (útil no futuro)?
+WATCH_DELAY = 5
+WATCH_RECURSIVELY = False
 WATCH_DIRECTORIES_EVENTS = False
 
-# ================================
-# TRIGGERS DE ATIVAÇÃO (Fase 1)
-# ================================
-# Ativar organização automática se...
-TRIGGER_MIN_FILES = 3  # Mais de X arquivos novos na pasta
-TRIGGER_INACTIVITY_HOURS = 48  # Arquivo não tocado há X horas
-TRIGGER_DESKTOP_COVERAGE = 70  # % da área de trabalho coberta (futura implementação)
+TRIGGER_MIN_FILES = 3
+TRIGGER_INACTIVITY_HOURS = 48
+TRIGGER_DESKTOP_COVERAGE = 70
 
-# Agendamento automático (ex: toda segunda às 9h) — futuro
-SCHEDULED_ORGANIZE = None 
+SCHEDULED_ORGANIZE = None
 
-# ================================
-# EXTENSION AND STANDARDS
-# ================================
-# Extensions that app will consider
 MONITORED_EXTENSIONS = (
     '.pdf', '.docx', '.txt',
     '.jpg', '.jpeg', '.png',
     '.mp4', '.zip', '.rar',
-    '.py', '.js', '.html'  # Útil pra devs como você
+    '.py', '.js', '.html'
 )
 
-# Palavras-chave pra detecção inteligente (ex: nome do arquivo)
 KEYWORD_PATTERNS = {
     'projeto': 'Projetos',
     'relatorio': 'Relatorios',
@@ -71,11 +49,6 @@ KEYWORD_PATTERNS = {
     'screenshot': 'Capturas'
 }
 
-# ================================
-# EXECUTION AND SECURITY
-# ================================
-
-# Paths or standard to ignore completely (ex: dev projets Paths )
 IGNORE_PATTERNS = [
     '.git',
     'venv',
@@ -84,28 +57,16 @@ IGNORE_PATTERNS = [
     '.DS_Store'
 ]
 
-# temporary Files from system for dont touching
 SYSTEM_TEMP_PATTERNS = ['~$', '.tmp', '.crdownload']
 
-# ================================
-# another
-# ================================
-# Log of app (to debug)
-LOG_LEVEL = "DEBUG"  #'DEBUG' to see all, 'INFO' no
+LOG_LEVEL = "DEBUG"
 
-
-# Beginner mode more notification and lass automation
 BEGINNER_MODE = True
 
-
-# Cores ANSI para cada tipo de evento
-RESET = '\033[0m'
 GREEN = '\033[32m'
 YELLOW = '\033[33m'
 RESET = '\033[0m'
-# ... outras cores se necessário
-#
-# RECICLÁVEL
-TRASH_DIR = Path(".fileflow_trash")
+
+TRASH_DIR = Path.home() / ".fileflow_trash"
 METADATA_FILE = TRASH_DIR / "metadata.json"
 

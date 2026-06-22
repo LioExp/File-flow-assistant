@@ -1,10 +1,12 @@
 import os
 import hashlib
+import threading
 from typing import List, Optional
 from database import FileIndex
 from datetime import datetime
 from progress import ProgressBar
 from config import GREEN
+
 
 class DuplicateDetector:
     def __init__(self, logger, watch_directories: List[str], hash_algo='sha256'):
@@ -13,63 +15,72 @@ class DuplicateDetector:
         self.hash_algo = hash_algo
         self.index = FileIndex()
         self.duplicates_report = []
+        self._scan_lock = threading.Lock()
+        self._scan_done = threading.Event()
 
-        self._scan_existing_files()
+    def start_background_scan(self):
+        thread = threading.Thread(target=self._scan_existing_files, daemon=True)
+        thread.start()
+        return thread
+
+    def wait_for_scan(self, timeout=None):
+        self._scan_done.wait(timeout=timeout)
 
     def _scan_existing_files(self):
-        self.logger.info("Scanning existing files for initial snapshot...")
+        with self._scan_lock:
+            self.logger.info("Background scan started...")
 
-        # Coleta todos os caminhos de arquivos
-        file_paths = []
-        for directory in self.watch_dirs:
-            if not os.path.isdir(directory):
-                self.logger.warning(f"Directory does not exist, skipping: {directory}")
-                continue
-            for root, _, files in os.walk(directory):
-                for file in files:
-                    file_paths.append(os.path.join(root, file))
+            file_paths = []
+            for directory in self.watch_dirs:
+                if not os.path.isdir(directory):
+                    self.logger.warning(f"Directory does not exist, skipping: {directory}")
+                    continue
+                for root, _, files in os.walk(directory):
+                    for file in files:
+                        file_paths.append(os.path.join(root, file))
 
-        total_files = len(file_paths)
-        if total_files == 0:
-            self.logger.info("No files found in monitored directories.")
-            return
+            total_files = len(file_paths)
+            if total_files == 0:
+                self.logger.info("No files found in monitored directories.")
+                self._scan_done.set()
+                return
 
-        from progress import ProgressBar
-        from config import GREEN
-        bar = ProgressBar(total=total_files, prefix="Indexing", color=GREEN)
+            bar = ProgressBar(total=total_files, prefix="Indexing", color=GREEN)
 
-        new_files = 0
-        modified_files = 0
-        unchanged_files = 0
+            new_files = 0
+            modified_files = 0
+            unchanged_files = 0
 
-        for path in file_paths:
-            # Verifica se o arquivo já está no banco
-            info = self.index.get_file_info(path)
-            if info:
-                try:
-                    current_mtime = os.path.getmtime(path)
-                    current_mtime_str = datetime.fromtimestamp(current_mtime).isoformat()
-                    if info['last_modified'] == current_mtime_str:
-                        unchanged_files += 1
-                        bar.update()
-                        continue
-                    else:
+            for path in file_paths:
+                info = self.index.get_file_info(path)
+                if info:
+                    try:
+                        current_mtime = os.path.getmtime(path)
+                        current_mtime_str = datetime.fromtimestamp(current_mtime).isoformat()
+                        if info['last_modified'] == current_mtime_str:
+                            unchanged_files += 1
+                            bar.update()
+                            continue
+                        else:
+                            modified_files += 1
+                    except OSError:
                         modified_files += 1
+                else:
+                    new_files += 1
 
-                except OSError:
-                    modified_files += 1  # se não conseguir ler, trata como modificado
-            else:
-                new_files += 1
+                self._process_file(path)
+                bar.update()
 
-            # Se chegou aqui, é novo ou modificado → processa
-            self._process_file(path)
-            bar.update()
+            self.logger.info(
+                f"Scan complete. Total: {total_files}, "
+                f"New: {new_files}, Modified: {modified_files}, Unchanged: {unchanged_files}"
+            )
+            if self.duplicates_report:
+                self.logger.warning(f"Found {len(self.duplicates_report)} duplicate files during scan.")
+                for dup in self.duplicates_report:
+                    self.logger.info(f"Duplicate: {dup['duplicate']} (original: {dup['original']})")
 
-        self.logger.info(f"Initial snapshot complete. Total: {total_files}, New: {new_files}, Modified: {modified_files}, Unchanged: {unchanged_files}")
-        if self.duplicates_report:
-            self.logger.warning(f"Found {len(self.duplicates_report)} duplicate files during scan.")
-            for dup in self.duplicates_report:
-                self.logger.info(f"Duplicate: {dup['duplicate']} (original: {dup['original']})")
+            self._scan_done.set()
                 
         
     def _calculate_hash(self, file_path: str) -> Optional[str]:
@@ -124,5 +135,3 @@ class DuplicateDetector:
 
     def generate_report(self):
         return self.duplicates_report
-    
-""" adicionar o bloco de codigo pra perguntar se o usuario quer gerar um arquivo de relatório(ATT: Não esquecer)"""    

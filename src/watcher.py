@@ -1,11 +1,14 @@
 from watchdog.events import FileSystemEventHandler
 import time
+import sys
+
 
 class FileFlowHandler(FileSystemEventHandler):
     def __init__(self, logger, detector):
         self.logger = logger
         self.detector = detector
         self.last_event = {}
+        self._debounce_ms = 500 if sys.platform == 'win32' else 500
 
     def on_created(self, event):
         if event.is_directory:

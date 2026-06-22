@@ -2,7 +2,11 @@ import typer
 import threading
 import time
 import os
+import sys
+import json
+import shutil
 import sqlite3
+from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -11,7 +15,8 @@ from rich import print as rprint
 from config import (
     WATCH_DIRECTORIES, TEMP_BASE_DIR, TEMP_CATEGORIES,
     KEYWORD_PATTERNS, IGNORE_PATTERNS,
-    TRIGGER_INACTIVITY_HOURS, WATCH_DELAY, WATCH_RECURSIVELY
+    TRIGGER_INACTIVITY_HOURS, WATCH_DELAY, WATCH_RECURSIVELY,
+    TRASH_DIR, METADATA_FILE
 )
 from watcher import FileFlowHandler
 from watchdog.observers import Observer
@@ -19,6 +24,7 @@ from logger import ColoredLogger
 from duplicate import DuplicateDetector
 from organizer import FileOrganizer
 from database import FileIndex
+from trash import soft_delete, verificar_lixeira
 
 app = typer.Typer()
 console = Console()
@@ -60,6 +66,9 @@ def start():
     console.print(f"[dim]Temp folder:[/dim] {TEMP_BASE_DIR}")
     console.print(f"[dim]Organizing files older than[/dim] [yellow]{TRIGGER_INACTIVITY_HOURS}h[/yellow]")
 
+    scan_thread = detector.start_background_scan()
+    console.print("[dim]Indexing files in background...[/dim]")
+
     handler = FileFlowHandler(logger, detector)
     observer = Observer()
 
@@ -92,6 +101,10 @@ def scan():
     """Scan for duplicate files and display results."""
     logger = _logger()
     detector = _detector(logger)
+
+    with console.status("[bold cyan]Scanning files...[/bold cyan]"):
+        detector._scan_existing_files()
+
     duplicates = detector.generate_report()
 
     if not duplicates:
@@ -131,6 +144,10 @@ def report():
     """Generate a duplicate report file."""
     logger = _logger()
     detector = _detector(logger)
+
+    with console.status("[bold cyan]Scanning files...[/bold cyan]"):
+        detector._scan_existing_files()
+
     duplicates = detector.generate_report()
 
     if not duplicates:
@@ -197,3 +214,72 @@ def db(action: str = typer.Argument("info", help="info | reset")):
 
     else:
         console.print(f"[red]Unknown action: {action}. Use 'info' or 'reset'.[/red]")
+
+
+@app.command()
+def trash():
+    """Show files in FileFlow trash."""
+    if not METADATA_FILE.exists():
+        console.print("[green]Trash is empty.[/green]")
+        return
+
+    with open(METADATA_FILE, 'r') as f:
+        metadata = json.load(f)
+
+    if not metadata:
+        console.print("[green]Trash is empty.[/green]")
+        return
+
+    table = Table(title=f"FileFlow Trash ({len(metadata)} files)")
+    table.add_column("File", style="yellow")
+    table.add_column("Original Path", style="dim")
+    table.add_column("Deleted At", style="cyan")
+
+    for filename, info in metadata.items():
+        table.add_row(filename, info.get('caminho_original', '?'), info.get('hora_entrada', '?'))
+
+    console.print(table)
+
+
+@app.command()
+def recover(filename: str):
+    """Recover a file from FileFlow trash."""
+    if not METADATA_FILE.exists():
+        console.print("[red]Trash is empty.[/red]")
+        return
+
+    with open(METADATA_FILE, 'r') as f:
+        metadata = json.load(f)
+
+    if filename not in metadata:
+        console.print(f"[red]File '{filename}' not found in trash.[/red]")
+        return
+
+    info = metadata[filename]
+    original_path = Path(info['caminho_original'])
+    original_path.parent.mkdir(parents=True, exist_ok=True)
+
+    src = TRASH_DIR / filename
+    if not src.exists():
+        console.print(f"[red]File not found on disk: {src}[/red]")
+        return
+
+    dest = original_path
+    if dest.exists():
+        base, ext = os.path.splitext(dest.name)
+        dest = dest.parent / f"{base}_recovered_{int(time.time())}{ext}"
+
+    shutil.move(str(src), str(dest))
+
+    del metadata[filename]
+    with open(METADATA_FILE, 'w') as f:
+        json.dump(metadata, f, indent=2)
+
+    console.print(f"[green]Recovered:[/green] {dest}")
+
+
+@app.command()
+def clean():
+    """Remove expired files from FileFlow trash."""
+    verificar_lixeira()
+    console.print("[green]Trash cleaned (files older than 30 days removed).[/green]")

@@ -3,37 +3,34 @@ import shutil
 import time
 from pathlib import Path
 
+
 class FileOrganizer:
     def __init__(self, logger, watch_dirs, temp_base, categories, patterns, ignore_patterns, inactivity_hours):
         self.logger = logger
-        self.watch_dirs = watch_dirs
-        self.temp_base = temp_base
+        self.watch_dirs = [Path(d) for d in watch_dirs]
+        self.temp_base = Path(temp_base)
         self.categories = categories
         self.patterns = patterns
         self.ignore_patterns = ignore_patterns
         self.inactivity_hours = inactivity_hours
 
     def _should_ignore(self, file_path):
-        """Verifica se o arquivo está em um padrão de ignorar."""
+        file_str = str(file_path).lower()
         for pattern in self.ignore_patterns:
-            if pattern in file_path:
+            if pattern.lower() in file_str:
                 return True
         return False
 
     def _get_category(self, filename):
-        """Determina a categoria baseada na extensão ou palavra-chave."""
         ext = os.path.splitext(filename)[1].lower()
-        # Primeiro por extensão
         if ext in self.categories:
             return self.categories[ext]
-        # Depois por palavra-chave
         for keyword, cat in self.patterns.items():
             if keyword.lower() in filename.lower():
                 return cat
         return self.categories.get('default', 'Outros')
 
     def _is_inactive(self, file_path):
-        """Verifica se o arquivo está inativo há mais de N horas."""
         try:
             mtime = os.path.getmtime(file_path)
             age = time.time() - mtime
@@ -42,53 +39,50 @@ class FileOrganizer:
             return False
 
     def organize_file(self, file_path):
-        """Move um arquivo para a pasta temporária, na subpasta da categoria."""
-        if not os.path.isfile(file_path):
+        file_path = Path(file_path)
+        if not file_path.is_file():
             return
-        filename = os.path.basename(file_path)
+        filename = file_path.name
         category = self._get_category(filename)
-        dest_dir = os.path.join(self.temp_base, category)
-        os.makedirs(dest_dir, exist_ok=True)
-        dest_path = os.path.join(dest_dir, filename)
+        dest_dir = self.temp_base / category
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / filename
 
-        # Evita sobrescrever: adiciona timestamp se já existir
-        if os.path.exists(dest_path):
+        if dest_path.exists():
             base, ext = os.path.splitext(filename)
             timestamp = int(time.time())
-            dest_path = os.path.join(dest_dir, f"{base}_{timestamp}{ext}")
+            dest_path = dest_dir / f"{base}_{timestamp}{ext}"
 
         try:
-            shutil.move(file_path, dest_path)
+            shutil.move(str(file_path), str(dest_path))
             self.logger.info(f"Moved inactive file: {file_path} -> {dest_path}")
         except Exception as e:
             self.logger.error(f"Failed to move {file_path}: {e}")
 
     def scan_and_organize(self, recursive=False):
-        """Percorre os diretórios monitorados e move arquivos inativos."""
         self.logger.info("Scanning for inactive files to organize...")
         moved_count = 0
         for directory in self.watch_dirs:
-            if not os.path.isdir(directory):
+            if not directory.is_dir():
                 continue
 
             if recursive:
                 for root, _, files in os.walk(directory):
                     for file in files:
-                        file_path = os.path.join(root, file)
+                        file_path = Path(root) / file
                         if self._should_ignore(file_path):
                             continue
                         if self._is_inactive(file_path):
                             self.organize_file(file_path)
                             moved_count += 1
             else:
-                for item in os.listdir(directory):
-                    file_path = os.path.join(directory, item)
-                    if not os.path.isfile(file_path):
+                for item in directory.iterdir():
+                    if not item.is_file():
                         continue
-                    if self._should_ignore(file_path):
+                    if self._should_ignore(item):
                         continue
-                    if self._is_inactive(file_path):
-                        self.organize_file(file_path)
+                    if self._is_inactive(item):
+                        self.organize_file(item)
                         moved_count += 1
 
         self.logger.info(f"Organization scan complete. Moved {moved_count} files.")

@@ -73,9 +73,18 @@ def start():
     handler = FileFlowHandler(logger, detector)
     observer = Observer()
 
+    scheduled = 0
     for pasta in WATCH_DIRECTORIES:
-        observer.schedule(handler, pasta, recursive=WATCH_RECURSIVELY)
-        logger.info(f"Scheduled watching: {pasta}")
+        if os.path.isdir(pasta):
+            observer.schedule(handler, pasta, recursive=WATCH_RECURSIVELY)
+            logger.info(f"Scheduled watching: {pasta}")
+            scheduled += 1
+        else:
+            console.print(f"[yellow]Skipping (not found):[/yellow] {pasta}")
+
+    if scheduled == 0:
+        console.print("[red]No valid directories to watch. Use 'watch-add' to add one.[/red]")
+        return
 
     observer.start()
 

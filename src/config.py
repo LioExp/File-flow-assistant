@@ -1,13 +1,12 @@
 import os
 import sys
 from pathlib import Path
+from watch_config import load_dirs
 
 if sys.platform == 'win32':
     os.system('')
 
-WATCH_DIRECTORIES = [
-    os.path.expanduser("~/Desktop"),
-]
+WATCH_DIRECTORIES = load_dirs()
 
 TEMP_BASE_DIR = os.path.expanduser("~/file_flow_temp")
 

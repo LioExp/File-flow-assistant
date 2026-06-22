@@ -25,6 +25,7 @@ from duplicate import DuplicateDetector
 from organizer import FileOrganizer
 from database import FileIndex
 from trash import soft_delete, verificar_lixeira
+from watch_config import load_dirs, add_dir, remove_dir
 
 app = typer.Typer()
 console = Console()
@@ -293,3 +294,44 @@ def clean():
     """Remove expired files from FileFlow trash."""
     verificar_lixeira()
     console.print("[green]Trash cleaned (files older than 30 days removed).[/green]")
+
+
+@app.command("watch")
+def watch_list():
+    """List monitored directories."""
+    dirs = load_dirs()
+
+    if not dirs:
+        console.print("[yellow]No directories configured.[/yellow]")
+        return
+
+    table = Table(title="Monitored Directories")
+    table.add_column("#", style="dim")
+    table.add_column("Path", style="cyan")
+    table.add_column("Exists", style="green")
+
+    for i, d in enumerate(dirs, 1):
+        exists = "yes" if os.path.isdir(d) else "[red]no[/red]"
+        table.add_row(str(i), d, exists)
+
+    console.print(table)
+
+
+@app.command("watch-add")
+def watch_add(path: str):
+    """Add a directory to monitor."""
+    added, expanded = add_dir(path)
+    if added:
+        console.print(f"[green]Added:[/green] {expanded}")
+    else:
+        console.print(f"[yellow]Already monitored:[/yellow] {expanded}")
+
+
+@app.command("watch-remove")
+def watch_remove(path: str):
+    """Remove a directory from monitoring."""
+    removed, expanded = remove_dir(path)
+    if removed:
+        console.print(f"[green]Removed:[/green] {expanded}")
+    else:
+        console.print(f"[yellow]Not found:[/yellow] {expanded}")

@@ -102,7 +102,12 @@ def scan():
     logger = _logger()
     detector = _detector(logger)
 
-    with console.status("[bold cyan]Scanning files...[/bold cyan]"):
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True
+    ) as progress:
+        task = progress.add_task("Scanning files...", total=None)
         detector._scan_existing_files()
 
     duplicates = detector.generate_report()
@@ -145,7 +150,12 @@ def report():
     logger = _logger()
     detector = _detector(logger)
 
-    with console.status("[bold cyan]Scanning files...[/bold cyan]"):
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True
+    ) as progress:
+        task = progress.add_task("Scanning files...", total=None)
         detector._scan_existing_files()
 
     duplicates = detector.generate_report()

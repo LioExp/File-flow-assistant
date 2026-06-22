@@ -4,7 +4,6 @@ import threading
 from typing import List, Optional
 from database import FileIndex
 from datetime import datetime
-from progress import ProgressBar
 from config import GREEN
 
 
@@ -26,7 +25,7 @@ class DuplicateDetector:
     def wait_for_scan(self, timeout=None):
         self._scan_done.wait(timeout=timeout)
 
-    def _scan_existing_files(self):
+    def _scan_existing_files(self, progress=None, task_id=None):
         with self._scan_lock:
             self.logger.info("Background scan started...")
 
@@ -45,8 +44,6 @@ class DuplicateDetector:
                 self._scan_done.set()
                 return
 
-            bar = ProgressBar(total=total_files, prefix="Indexing", color=GREEN)
-
             new_files = 0
             modified_files = 0
             unchanged_files = 0
@@ -59,7 +56,8 @@ class DuplicateDetector:
                         current_mtime_str = datetime.fromtimestamp(current_mtime).isoformat()
                         if info['last_modified'] == current_mtime_str:
                             unchanged_files += 1
-                            bar.update()
+                            if progress and task_id is not None:
+                                progress.advance(task_id)
                             continue
                         else:
                             modified_files += 1
@@ -69,7 +67,8 @@ class DuplicateDetector:
                     new_files += 1
 
                 self._process_file(path)
-                bar.update()
+                if progress and task_id is not None:
+                    progress.advance(task_id)
 
             self.logger.info(
                 f"Scan complete. Total: {total_files}, "

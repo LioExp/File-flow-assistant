@@ -26,6 +26,7 @@ from organizer import FileOrganizer
 from database import FileIndex
 from trash import soft_delete, verificar_lixeira
 from watch_config import load_dirs, add_dir, remove_dir
+from rules import load_rules, add_rule, remove_rule, Rule
 
 app = typer.Typer()
 console = Console()
@@ -55,17 +56,23 @@ def _organizer(logger=None):
     )
 
 
+def _format_size(size):
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
 @app.command()
 def start():
-    """Start FileFlow monitoring and auto-organizing."""
+    """Start FileFlow monitoring and duplicate detection."""
     logger = _logger()
     detector = _detector(logger)
-    organizer = _organizer(logger)
 
     console.print("[bold cyan]FileFlow Assistant started![/bold cyan]")
     console.print(f"[dim]Monitoring:[/dim] {WATCH_DIRECTORIES}")
-    console.print(f"[dim]Temp folder:[/dim] {TEMP_BASE_DIR}")
-    console.print(f"[dim]Organizing files older than[/dim] [yellow]{TRIGGER_INACTIVITY_HOURS}h[/yellow]")
+    console.print(f"[dim]Mode:[/dim] watch + duplicate detection only")
 
     scan_thread = detector.start_background_scan()
     console.print("[dim]Indexing files in background...[/dim]")
@@ -87,13 +94,6 @@ def start():
         return
 
     observer.start()
-
-    def organizer_loop():
-        while True:
-            time.sleep(WATCH_DELAY)
-            organizer.scan_and_organize(recursive=WATCH_RECURSIVELY)
-
-    threading.Thread(target=organizer_loop, daemon=True).start()
 
     try:
         while True:
@@ -117,7 +117,7 @@ def scan():
         TextColumn("[progress.description]{task.description}"),
         transient=True
     ) as progress:
-        task = progress.add_task("Scanning files...", total=None)
+        progress.add_task("Scanning files...", total=None)
         detector._scan_existing_files()
 
     duplicates = detector.generate_report()
@@ -127,31 +127,57 @@ def scan():
         return
 
     table = Table(title=f"Duplicates Found ({len(duplicates)})")
-    table.add_column("Duplicate", style="yellow")
-    table.add_column("Original", style="dim")
-    table.add_column("Size (bytes)", style="cyan")
+    table.add_column("File", style="yellow")
+    table.add_column("Same as", style="dim")
+    table.add_column("Size", style="cyan")
 
     for dup in duplicates:
-        table.add_row(dup['duplicate'], dup['original'], str(dup['size']))
+        table.add_row(dup['duplicate'], dup['original'], _format_size(dup['size']))
 
     console.print(table)
 
 
 @app.command()
 def organize():
-    """Run one-time organization of inactive files."""
-    logger = _logger()
-    organizer = _organizer(logger)
+    """Preview and organize inactive files."""
+    organizer = _organizer()
+    files = organizer.preview(recursive=WATCH_RECURSIVELY)
+
+    if not files:
+        console.print("[green]No inactive files to organize.[/green]")
+        return
+
+    table = Table(title=f"Files to organize ({len(files)})")
+    table.add_column("File", style="yellow")
+    table.add_column("Category", style="cyan")
+    table.add_column("Size", style="dim")
+    table.add_column("Destination", style="green")
+
+    for f in files:
+        table.add_row(
+            f['source'].name,
+            f['category'],
+            _format_size(f['size']),
+            str(f['dest'].parent)
+        )
+
+    console.print(table)
+
+    if not typer.confirm("Do you want to organize these files?"):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
 
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         transient=True
     ) as progress:
-        progress.add_task("Organizing inactive files...", total=None)
-        organizer.scan_and_organize(recursive=WATCH_RECURSIVELY)
+        task = progress.add_task("Moving files...", total=len(files))
+        for f in files:
+            organizer.organize_file(f['source'])
+            progress.advance(task)
 
-    console.print("[green]Organization complete![/green]")
+    console.print(f"[green]Organized {len(files)} files.[/green]")
 
 
 @app.command()
@@ -165,7 +191,7 @@ def report():
         TextColumn("[progress.description]{task.description}"),
         transient=True
     ) as progress:
-        task = progress.add_task("Scanning files...", total=None)
+        progress.add_task("Scanning files...", total=None)
         detector._scan_existing_files()
 
     duplicates = detector.generate_report()
@@ -180,7 +206,7 @@ def report():
             f.write(f"Duplicate: {dup['duplicate']}\n")
             f.write(f"Original:  {dup['original']}\n")
             f.write(f"Hash:      {dup['hash']}\n")
-            f.write(f"Size:      {dup['size']} bytes\n")
+            f.write(f"Size:      {_format_size(dup['size'])}\n")
             f.write("-" * 60 + "\n")
 
     console.print(f"[green]Report saved to[/green] [bold]{report_path}[/bold]")
@@ -198,7 +224,6 @@ def status():
     table.add_row("Inactivity Hours", str(TRIGGER_INACTIVITY_HOURS))
     table.add_row("Watch Delay (s)", str(WATCH_DELAY))
     table.add_row("Recursive", str(WATCH_RECURSIVELY))
-    table.add_row("Categories", str(len(TEMP_CATEGORIES)))
 
     index = FileIndex()
     try:
@@ -207,6 +232,9 @@ def status():
         table.add_row("Indexed Files", str(count))
     except Exception:
         table.add_row("Indexed Files", "?")
+
+    rules = load_rules()
+    table.add_row("Rules", str(len(rules)))
 
     console.print(table)
 
@@ -344,3 +372,55 @@ def watch_remove(path: str):
         console.print(f"[green]Removed:[/green] {expanded}")
     else:
         console.print(f"[yellow]Not found:[/yellow] {expanded}")
+
+
+@app.command("rules")
+def rules_list():
+    """List organization rules."""
+    rules = load_rules()
+
+    if not rules:
+        console.print("[yellow]No rules configured.[/yellow]")
+        return
+
+    table = Table(title="Organization Rules")
+    table.add_column("Name", style="yellow")
+    table.add_column("Conditions", style="cyan")
+    table.add_column("Action", style="green")
+
+    for r in rules:
+        conds = ", ".join(f"{k}={v}" for k, v in r.conditions.items())
+        action = f"{r.action['type']} -> {r.action['dest']}"
+        table.add_row(r.name, conds, action)
+
+    console.print(table)
+
+
+@app.command("rules-add")
+def rules_add(
+    name: str,
+    extension: str = typer.Option(None, help="File extension (e.g. .pdf)"),
+    keyword: str = typer.Option(None, help="Keyword in filename"),
+    dest: str = typer.Option(..., help="Destination category"),
+):
+    """Add an organization rule."""
+    conditions = {}
+    if extension:
+        conditions['extension'] = extension.lower()
+    if keyword:
+        conditions['keyword'] = keyword
+
+    if not conditions:
+        console.print("[red]Provide at least --extension or --keyword.[/red]")
+        return
+
+    action = {"type": "move", "dest": dest}
+    add_rule(name, conditions, action)
+    console.print(f"[green]Rule added:[/green] {name}")
+
+
+@app.command("rules-remove")
+def rules_remove(name: str):
+    """Remove an organization rule by name."""
+    remove_rule(name)
+    console.print(f"[green]Rule removed:[/green] {name}")

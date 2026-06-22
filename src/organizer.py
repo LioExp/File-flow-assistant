@@ -38,6 +38,43 @@ class FileOrganizer:
         except OSError:
             return False
 
+    def preview(self, recursive=False):
+        results = []
+        for directory in self.watch_dirs:
+            if not directory.is_dir():
+                continue
+            if recursive:
+                for root, _, files in os.walk(directory):
+                    for file in files:
+                        file_path = Path(root) / file
+                        if self._should_ignore(file_path):
+                            continue
+                        if self._is_inactive(file_path):
+                            category = self._get_category(file_path.name)
+                            dest = self.temp_base / category / file_path.name
+                            results.append({
+                                'source': file_path,
+                                'dest': dest,
+                                'category': category,
+                                'size': file_path.stat().st_size,
+                            })
+            else:
+                for item in directory.iterdir():
+                    if not item.is_file():
+                        continue
+                    if self._should_ignore(item):
+                        continue
+                    if self._is_inactive(item):
+                        category = self._get_category(item.name)
+                        dest = self.temp_base / category / item.name
+                        results.append({
+                            'source': item,
+                            'dest': dest,
+                            'category': category,
+                            'size': item.stat().st_size,
+                        })
+        return results
+
     def organize_file(self, file_path):
         file_path = Path(file_path)
         if not file_path.is_file():
@@ -55,34 +92,15 @@ class FileOrganizer:
 
         try:
             shutil.move(str(file_path), str(dest_path))
-            self.logger.info(f"Moved inactive file: {file_path} -> {dest_path}")
+            self.logger.info(f"Moved: {file_path} -> {dest_path}")
         except Exception as e:
             self.logger.error(f"Failed to move {file_path}: {e}")
 
-    def scan_and_organize(self, recursive=False):
-        self.logger.info("Scanning for inactive files to organize...")
-        moved_count = 0
-        for directory in self.watch_dirs:
-            if not directory.is_dir():
-                continue
-
-            if recursive:
-                for root, _, files in os.walk(directory):
-                    for file in files:
-                        file_path = Path(root) / file
-                        if self._should_ignore(file_path):
-                            continue
-                        if self._is_inactive(file_path):
-                            self.organize_file(file_path)
-                            moved_count += 1
-            else:
-                for item in directory.iterdir():
-                    if not item.is_file():
-                        continue
-                    if self._should_ignore(item):
-                        continue
-                    if self._is_inactive(item):
-                        self.organize_file(item)
-                        moved_count += 1
-
-        self.logger.info(f"Organization scan complete. Moved {moved_count} files.")
+    def organize_selected(self, file_paths):
+        moved = 0
+        for fp in file_paths:
+            p = Path(fp)
+            if p.is_file():
+                self.organize_file(p)
+                moved += 1
+        return moved

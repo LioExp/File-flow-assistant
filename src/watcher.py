@@ -1,6 +1,7 @@
 from watchdog.events import FileSystemEventHandler
 import time
 import sys
+from trash import soft_delete
 
 
 class FileFlowHandler(FileSystemEventHandler):

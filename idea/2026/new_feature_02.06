@@ -1,0 +1,9 @@
+
+| RF04 | Fornecer uma interface CLI colorida com `rich` (barra de progresso, logs coloridos). ()
+| RF05 | Gerar relatório de ficheiros duplicados (com base no hash) sem apagar nada –modo seguro ()
+
+| RF07 | Implementar **soft delete**: mover ficheiros apagados para uma `lixeira segura` com timestamp, permitindo recuperação. ()
+| RF08 | Adicionar um comando CLI (`fileflow recover`) para restaurar ficheiros da lixeira. ()
+
+criar um arquivo malicioso e testar contra o fileflow. ()
+

@@ -1,21 +1,13 @@
 import typer
-import threading
 import time
 import os
-import sys
-import json
-import shutil
-import sqlite3
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import print as rprint
 
 from config import (
-    WATCH_DIRECTORIES, TEMP_BASE_DIR, TEMP_CATEGORIES,
-    KEYWORD_PATTERNS, IGNORE_PATTERNS,
-    TRIGGER_INACTIVITY_HOURS, WATCH_DELAY, WATCH_RECURSIVELY,
+    WATCH_DIRECTORIES, WATCH_RECURSIVELY,
     TRASH_DIR, METADATA_FILE
 )
 from watcher import FileFlowHandler
@@ -23,11 +15,16 @@ from watchdog.observers import Observer
 from logger import ColoredLogger
 from duplicate import DuplicateDetector
 from organizer import FileOrganizer
-from database import FileIndex
-from trash import soft_delete, verificar_lixeira
+from trash import clean_expired
 from watch_config import load_dirs, add_dir, remove_dir
-from rules import load_rules, add_rule, remove_rule, Rule
-from scanner import VirusScanner, is_suspicious
+from rules import load_rules, add_rule, remove_rule
+from scanner import VirusScanner
+from services import (
+    get_status_data, db_info, db_reset,
+    trash_list, trash_recover, trash_clean, format_size
+)
+
+__all__ = ['app']
 
 app = typer.Typer()
 console = Console()
@@ -43,28 +40,6 @@ def _detector(logger=None):
     return DuplicateDetector(logger, WATCH_DIRECTORIES)
 
 
-def _organizer(logger=None):
-    if logger is None:
-        logger = _logger()
-    return FileOrganizer(
-        logger=logger,
-        watch_dirs=WATCH_DIRECTORIES,
-        temp_base=TEMP_BASE_DIR,
-        categories=TEMP_CATEGORIES,
-        patterns=KEYWORD_PATTERNS,
-        ignore_patterns=IGNORE_PATTERNS,
-        inactivity_hours=TRIGGER_INACTIVITY_HOURS
-    )
-
-
-def _format_size(size):
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size < 1024:
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} TB"
-
-
 @app.command()
 def start():
     """Start FileFlow monitoring and duplicate detection."""
@@ -73,22 +48,21 @@ def start():
 
     console.print("[bold cyan]FileFlow Assistant started![/bold cyan]")
     console.print(f"[dim]Monitoring:[/dim] {WATCH_DIRECTORIES}")
-    console.print(f"[dim]Mode:[/dim] watch + duplicate detection only")
 
-    scan_thread = detector.start_background_scan()
+    detector.start_background_scan()
     console.print("[dim]Indexing files in background...[/dim]")
 
     handler = FileFlowHandler(logger, detector)
     observer = Observer()
 
     scheduled = 0
-    for pasta in WATCH_DIRECTORIES:
-        if os.path.isdir(pasta):
-            observer.schedule(handler, pasta, recursive=WATCH_RECURSIVELY)
-            logger.info(f"Scheduled watching: {pasta}")
+    for directory in WATCH_DIRECTORIES:
+        if os.path.isdir(directory):
+            observer.schedule(handler, directory, recursive=WATCH_RECURSIVELY)
+            logger.info(f"Scheduled watching: {directory}")
             scheduled += 1
         else:
-            console.print(f"[yellow]Skipping (not found):[/yellow] {pasta}")
+            console.print(f"[yellow]Skipping (not found):[/yellow] {directory}")
 
     if scheduled == 0:
         console.print("[red]No valid directories to watch. Use 'watch-add' to add one.[/red]")
@@ -133,7 +107,7 @@ def scan():
     table.add_column("Size", style="cyan")
 
     for dup in duplicates:
-        table.add_row(dup['duplicate'], dup['original'], _format_size(dup['size']))
+        table.add_row(dup['duplicate'], dup['original'], format_size(dup['size']))
 
     console.print(table)
 
@@ -141,7 +115,21 @@ def scan():
 @app.command()
 def organize():
     """Preview and organize inactive files."""
-    organizer = _organizer()
+    from config import (
+        TEMP_BASE_DIR, TEMP_CATEGORIES,
+        KEYWORD_PATTERNS, IGNORE_PATTERNS,
+        TRIGGER_INACTIVITY_HOURS
+    )
+
+    organizer = FileOrganizer(
+        logger=_logger(),
+        watch_dirs=WATCH_DIRECTORIES,
+        temp_base=TEMP_BASE_DIR,
+        categories=TEMP_CATEGORIES,
+        patterns=KEYWORD_PATTERNS,
+        ignore_patterns=IGNORE_PATTERNS,
+        inactivity_hours=TRIGGER_INACTIVITY_HOURS
+    )
     files = organizer.preview(recursive=WATCH_RECURSIVELY)
 
     if not files:
@@ -158,7 +146,7 @@ def organize():
         table.add_row(
             f['source'].name,
             f['category'],
-            _format_size(f['size']),
+            format_size(f['size']),
             str(f['dest'].parent)
         )
 
@@ -207,7 +195,7 @@ def report():
             f.write(f"Duplicate: {dup['duplicate']}\n")
             f.write(f"Original:  {dup['original']}\n")
             f.write(f"Hash:      {dup['hash']}\n")
-            f.write(f"Size:      {_format_size(dup['size'])}\n")
+            f.write(f"Size:      {format_size(dup['size'])}\n")
             f.write("-" * 60 + "\n")
 
     console.print(f"[green]Report saved to[/green] [bold]{report_path}[/bold]")
@@ -216,26 +204,19 @@ def report():
 @app.command()
 def status():
     """Show system status and configuration."""
+    data = get_status_data()
+
     table = Table(title="FileFlow Status")
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="white")
 
-    table.add_row("Watch Directories", "\n".join(WATCH_DIRECTORIES))
-    table.add_row("Temp Base", TEMP_BASE_DIR)
-    table.add_row("Inactivity Hours", str(TRIGGER_INACTIVITY_HOURS))
-    table.add_row("Watch Delay (s)", str(WATCH_DELAY))
-    table.add_row("Recursive", str(WATCH_RECURSIVELY))
-
-    index = FileIndex()
-    try:
-        with sqlite3.connect(index.db_path) as conn:
-            count = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-        table.add_row("Indexed Files", str(count))
-    except Exception:
-        table.add_row("Indexed Files", "?")
-
-    rules = load_rules()
-    table.add_row("Rules", str(len(rules)))
+    table.add_row("Watch Directories", "\n".join(data['watch_directories']))
+    table.add_row("Temp Base", data['temp_base'])
+    table.add_row("Inactivity Hours", str(data['inactivity_hours']))
+    table.add_row("Watch Delay (s)", str(data['watch_delay']))
+    table.add_row("Recursive", str(data['recursive']))
+    table.add_row("Indexed Files", str(data['indexed_files']) if data['indexed_files'] is not None else "?")
+    table.add_row("Rules", str(data['rules_count']))
 
     console.print(table)
 
@@ -243,22 +224,17 @@ def status():
 @app.command()
 def db(action: str = typer.Argument("info", help="info | reset")):
     """Database operations (info or reset)."""
-    index = FileIndex()
-
     if action == "info":
-        try:
-            with sqlite3.connect(index.db_path) as conn:
-                count = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-            console.print(f"[cyan]Database:[/cyan] {index.db_path}")
-            console.print(f"[cyan]Indexed files:[/cyan] [bold]{count}[/bold]")
-        except Exception as e:
-            console.print(f"[red]Error:[/red] {e}")
+        info = db_info()
+        if info['error']:
+            console.print(f"[red]Error:[/red] {info['error']}")
+        else:
+            console.print(f"[cyan]Database:[/cyan] {info['path']}")
+            console.print(f"[cyan]Indexed files:[/cyan] [bold]{info['count']}[/bold]")
 
     elif action == "reset":
         if typer.confirm("Are you sure you want to reset the database?"):
-            if os.path.exists(index.db_path):
-                os.remove(index.db_path)
-            FileIndex(index.db_path)._init_db()
+            db_reset()
             console.print("[green]Database reset![/green]")
 
     else:
@@ -268,61 +244,36 @@ def db(action: str = typer.Argument("info", help="info | reset")):
 @app.command()
 def trash():
     """Show files in FileFlow trash."""
-    if not METADATA_FILE.exists():
+    items = trash_list()
+
+    if items is None:
         console.print("[green]Trash is empty.[/green]")
         return
 
-    with open(METADATA_FILE, 'r') as f:
-        metadata = json.load(f)
-
-    if not metadata:
+    if not items:
         console.print("[green]Trash is empty.[/green]")
         return
 
-    table = Table(title=f"FileFlow Trash ({len(metadata)} files)")
-    table.add_column("File", style="yellow")
+    table = Table(title=f"FileFlow Trash ({len(items)} files)")
+    table.add_column("#", style="dim")
+    table.add_column("Trash Name", style="yellow")
     table.add_column("Original Path", style="dim")
     table.add_column("Deleted At", style="cyan")
 
-    for filename, info in metadata.items():
-        table.add_row(filename, info.get('caminho_original', '?'), info.get('hora_entrada', '?'))
+    for i, item in enumerate(items, 1):
+        table.add_row(str(i), item['trash_name'], item['original_path'], item['deleted_at'])
 
     console.print(table)
 
 
 @app.command()
-def recover(filename: str):
-    """Recover a file from FileFlow trash."""
-    if not METADATA_FILE.exists():
-        console.print("[red]Trash is empty.[/red]")
+def recover(identifier: str):
+    """Recover a file from FileFlow trash (use trash name or index number)."""
+    dest, error = trash_recover(identifier)
+
+    if error:
+        console.print(f"[red]{error}[/red]")
         return
-
-    with open(METADATA_FILE, 'r') as f:
-        metadata = json.load(f)
-
-    if filename not in metadata:
-        console.print(f"[red]File '{filename}' not found in trash.[/red]")
-        return
-
-    info = metadata[filename]
-    original_path = Path(info['caminho_original'])
-    original_path.parent.mkdir(parents=True, exist_ok=True)
-
-    src = TRASH_DIR / filename
-    if not src.exists():
-        console.print(f"[red]File not found on disk: {src}[/red]")
-        return
-
-    dest = original_path
-    if dest.exists():
-        base, ext = os.path.splitext(dest.name)
-        dest = dest.parent / f"{base}_recovered_{int(time.time())}{ext}"
-
-    shutil.move(str(src), str(dest))
-
-    del metadata[filename]
-    with open(METADATA_FILE, 'w') as f:
-        json.dump(metadata, f, indent=2)
 
     console.print(f"[green]Recovered:[/green] {dest}")
 
@@ -330,8 +281,8 @@ def recover(filename: str):
 @app.command()
 def clean():
     """Remove expired files from FileFlow trash."""
-    verificar_lixeira()
-    console.print("[green]Trash cleaned (files older than 30 days removed).[/green]")
+    count = trash_clean()
+    console.print(f"[green]Trash cleaned ({count} expired files removed).[/green]")
 
 
 @app.command("watch")
@@ -358,21 +309,21 @@ def watch_list():
 @app.command("watch-add")
 def watch_add(path: str):
     """Add a directory to monitor."""
-    added, expanded = add_dir(path)
+    added, expanded, error = add_dir(path)
     if added:
         console.print(f"[green]Added:[/green] {expanded}")
     else:
-        console.print(f"[yellow]Already monitored:[/yellow] {expanded}")
+        console.print(f"[yellow]{error}:[/yellow] {expanded}")
 
 
 @app.command("watch-remove")
 def watch_remove(path: str):
     """Remove a directory from monitoring."""
-    removed, expanded = remove_dir(path)
+    removed, expanded, error = remove_dir(path)
     if removed:
         console.print(f"[green]Removed:[/green] {expanded}")
     else:
-        console.print(f"[yellow]Not found:[/yellow] {expanded}")
+        console.print(f"[yellow]{error}:[/yellow] {expanded}")
 
 
 @app.command("rules")

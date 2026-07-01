@@ -5,6 +5,8 @@ import shutil
 from pathlib import Path
 from typing import Optional, List, Dict
 
+__all__ = ['VirusScanner', 'is_suspicious']
+
 
 class VirusScanner:
     def __init__(self, logger=None):
@@ -60,7 +62,7 @@ class VirusScanner:
     def _scan_clamav(self, file_path: str) -> Dict:
         try:
             result = subprocess.run(
-                ['clamscan', '--no-summary', file_path],
+                ['clamscan', '--no-summary', '--', file_path],
                 capture_output=True, text=True, timeout=120
             )
             output = result.stdout.strip()
@@ -79,7 +81,7 @@ class VirusScanner:
     def _scan_clamav_dir(self, dir_path: str) -> List[Dict]:
         try:
             result = subprocess.run(
-                ['clamscan', '-r', '--no-summary', dir_path],
+                ['clamscan', '-r', '--no-summary', '--', dir_path],
                 capture_output=True, text=True, timeout=600
             )
             results = []

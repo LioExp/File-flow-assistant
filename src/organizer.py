@@ -3,6 +3,8 @@ import shutil
 import time
 from pathlib import Path
 
+__all__ = ['FileOrganizer']
+
 
 class FileOrganizer:
     def __init__(self, logger, watch_dirs, temp_base, categories, patterns, ignore_patterns, inactivity_hours):
@@ -38,6 +40,15 @@ class FileOrganizer:
         except OSError:
             return False
 
+    def _resolve_dest(self, source_path):
+        category = self._get_category(source_path.name)
+        dest_dir = self.temp_base / category
+        dest = dest_dir / source_path.name
+        if dest.exists():
+            base, ext = os.path.splitext(source_path.name)
+            dest = dest_dir / f"{base}_{int(time.time())}{ext}"
+        return dest, category
+
     def preview(self, recursive=False):
         results = []
         for directory in self.watch_dirs:
@@ -50,8 +61,7 @@ class FileOrganizer:
                         if self._should_ignore(file_path):
                             continue
                         if self._is_inactive(file_path):
-                            category = self._get_category(file_path.name)
-                            dest = self.temp_base / category / file_path.name
+                            dest, category = self._resolve_dest(file_path)
                             results.append({
                                 'source': file_path,
                                 'dest': dest,
@@ -65,8 +75,7 @@ class FileOrganizer:
                     if self._should_ignore(item):
                         continue
                     if self._is_inactive(item):
-                        category = self._get_category(item.name)
-                        dest = self.temp_base / category / item.name
+                        dest, category = self._resolve_dest(item)
                         results.append({
                             'source': item,
                             'dest': dest,
@@ -78,29 +87,22 @@ class FileOrganizer:
     def organize_file(self, file_path):
         file_path = Path(file_path)
         if not file_path.is_file():
-            return
-        filename = file_path.name
-        category = self._get_category(filename)
-        dest_dir = self.temp_base / category
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_path = dest_dir / filename
+            return False
 
-        if dest_path.exists():
-            base, ext = os.path.splitext(filename)
-            timestamp = int(time.time())
-            dest_path = dest_dir / f"{base}_{timestamp}{ext}"
+        dest, _ = self._resolve_dest(file_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            shutil.move(str(file_path), str(dest_path))
-            self.logger.info(f"Moved: {file_path} -> {dest_path}")
+            shutil.move(str(file_path), str(dest))
+            self.logger.info(f"Moved: {file_path} -> {dest}")
+            return True
         except Exception as e:
             self.logger.error(f"Failed to move {file_path}: {e}")
+            return False
 
     def organize_selected(self, file_paths):
         moved = 0
         for fp in file_paths:
-            p = Path(fp)
-            if p.is_file():
-                self.organize_file(p)
+            if self.organize_file(fp):
                 moved += 1
         return moved

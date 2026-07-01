@@ -3,8 +3,11 @@ import json
 import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from watch_config import FILEFLOW_HOME
 
-RULES_PATH = Path.home() / ".fileflow" / "rules.json"
+__all__ = ['Rule', 'RuleEngine', 'load_rules', 'add_rule', 'remove_rule']
+
+RULES_PATH = FILEFLOW_HOME / "rules.json"
 
 DEFAULT_RULES = [
     {

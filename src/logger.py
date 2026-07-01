@@ -1,9 +1,14 @@
-import sys
 from datetime import datetime
-from config import GREEN, YELLOW, RESET
+
+__all__ = ['ColoredLogger']
+
+GREEN = '\033[32m'
+YELLOW = '\033[33m'
+RESET = '\033[0m'
+
 
 class ColoredLogger:
-    
+
     LEVEL_COLOR = YELLOW
     TEXT_COLOR = GREEN
 
@@ -11,11 +16,9 @@ class ColoredLogger:
         self.log_file = log_file
 
     def _write(self, text):
-
         print(text)
 
         if self.log_file:
-            # Remove os códigos ANSI para o arquivo
             clean = text.replace(GREEN, '').replace(YELLOW, '').replace(RESET, '')
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(clean + '\n')
@@ -45,5 +48,3 @@ class ColoredLogger:
 
     def error(self, message, path=None):
         self._write(self._format("ERROR", message, path))
-
-logger = ColoredLogger()

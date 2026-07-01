@@ -1,10 +1,15 @@
 import os
-import sys
 from pathlib import Path
-from watch_config import load_dirs
+from watch_config import load_dirs, FILEFLOW_HOME
 
-if sys.platform == 'win32':
-    os.system('')
+__all__ = [
+    'WATCH_DIRECTORIES', 'TEMP_BASE_DIR', 'TEMP_CATEGORIES',
+    'WATCH_DELAY', 'WATCH_RECURSIVELY',
+    'TRIGGER_MIN_FILES', 'TRIGGER_INACTIVITY_HOURS', 'TRIGGER_DESKTOP_COVERAGE',
+    'MONITORED_EXTENSIONS', 'KEYWORD_PATTERNS', 'IGNORE_PATTERNS',
+    'SYSTEM_TEMP_PATTERNS', 'LOG_LEVEL', 'BEGINNER_MODE',
+    'TRASH_DIR', 'METADATA_FILE', 'FILEFLOW_HOME'
+]
 
 WATCH_DIRECTORIES = load_dirs()
 
@@ -25,13 +30,10 @@ TEMP_CATEGORIES = {
 
 WATCH_DELAY = 5
 WATCH_RECURSIVELY = False
-WATCH_DIRECTORIES_EVENTS = False
 
 TRIGGER_MIN_FILES = 3
 TRIGGER_INACTIVITY_HOURS = 48
 TRIGGER_DESKTOP_COVERAGE = 70
-
-SCHEDULED_ORGANIZE = None
 
 MONITORED_EXTENSIONS = (
     '.pdf', '.docx', '.txt',
@@ -62,10 +64,5 @@ LOG_LEVEL = "DEBUG"
 
 BEGINNER_MODE = True
 
-GREEN = '\033[32m'
-YELLOW = '\033[33m'
-RESET = '\033[0m'
-
 TRASH_DIR = Path.home() / ".fileflow_trash"
 METADATA_FILE = TRASH_DIR / "metadata.json"
-

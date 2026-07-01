@@ -3,8 +3,8 @@ import hashlib
 import threading
 from typing import List, Optional
 from database import FileIndex
-from datetime import datetime
-from config import GREEN
+
+__all__ = ['DuplicateDetector']
 
 
 class DuplicateDetector:
@@ -13,9 +13,10 @@ class DuplicateDetector:
         self.watch_dirs = watch_directories
         self.hash_algo = hash_algo
         self.index = FileIndex()
-        self.duplicates_report = []
-        self._scan_lock = threading.Lock()
+        self._lock = threading.Lock()
         self._scan_done = threading.Event()
+        self._duplicates = []
+        self._seen_hashes = {}
 
     def start_background_scan(self):
         thread = threading.Thread(target=self._scan_existing_files, daemon=True)
@@ -26,7 +27,7 @@ class DuplicateDetector:
         self._scan_done.wait(timeout=timeout)
 
     def _scan_existing_files(self, progress=None, task_id=None):
-        with self._scan_lock:
+        with self._lock:
             self.logger.info("Background scan started...")
 
             file_paths = []
@@ -53,9 +54,10 @@ class DuplicateDetector:
                 if info:
                     try:
                         current_mtime = os.path.getmtime(path)
-                        current_mtime_str = datetime.fromtimestamp(current_mtime).isoformat()
-                        if info['last_modified'] == current_mtime_str:
+                        stored_mtime = info['last_modified']
+                        if isinstance(stored_mtime, (int, float)) and abs(stored_mtime - current_mtime) < 0.001:
                             unchanged_files += 1
+                            self._seen_hashes[info['hash']] = path
                             if progress and task_id is not None:
                                 progress.advance(task_id)
                             continue
@@ -74,14 +76,13 @@ class DuplicateDetector:
                 f"Scan complete. Total: {total_files}, "
                 f"New: {new_files}, Modified: {modified_files}, Unchanged: {unchanged_files}"
             )
-            if self.duplicates_report:
-                self.logger.warning(f"Found {len(self.duplicates_report)} duplicate files during scan.")
-                for dup in self.duplicates_report:
+            if self._duplicates:
+                self.logger.warning(f"Found {len(self._duplicates)} duplicate files during scan.")
+                for dup in self._duplicates:
                     self.logger.info(f"Duplicate: {dup['duplicate']} (original: {dup['original']})")
 
             self._scan_done.set()
-                
-        
+
     def _calculate_hash(self, file_path: str) -> Optional[str]:
         hash_func = hashlib.new(self.hash_algo)
         try:
@@ -99,38 +100,41 @@ class DuplicateDetector:
 
         stat = os.stat(file_path)
         size = stat.st_size
-        mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+        mtime = stat.st_mtime
         file_hash = self._calculate_hash(file_path)
         if file_hash is None:
             return
 
-        existing = self.index.get_all_hashes()
-        if file_hash in existing and existing[file_hash] != file_path:
-            self.duplicates_report.append({
+        if file_hash in self._seen_hashes and self._seen_hashes[file_hash] != file_path:
+            self._duplicates.append({
                 'hash': file_hash,
-                'original': existing[file_hash],
+                'original': self._seen_hashes[file_hash],
                 'duplicate': file_path,
                 'size': size
             })
-            # Não logar durante varredura para não poluir a barra
-            # self.logger.warning(f"Duplicate detected: {file_path} (same as {existing[file_hash]})")
         else:
+            self._seen_hashes[file_hash] = file_path
             self.index.add_or_update(file_path, size, file_hash, mtime)
 
     def on_created(self, file_path: str):
-        self._process_file(file_path)
+        with self._lock:
+            self._process_file(file_path)
 
     def on_modified(self, file_path: str):
-        if self.index.path_exists(file_path):
-            self.index.remove(file_path)
-        self._process_file(file_path)
+        with self._lock:
+            if self.index.path_exists(file_path):
+                self.index.remove(file_path)
+            self._process_file(file_path)
 
     def on_deleted(self, file_path: str):
-        self.index.remove(file_path)
+        with self._lock:
+            self.index.remove(file_path)
 
     def on_moved(self, src_path: str, dest_path: str):
-        self.on_deleted(src_path)
-        self.on_created(dest_path)
+        with self._lock:
+            self.on_deleted(src_path)
+            self.on_created(dest_path)
 
     def generate_report(self):
-        return self.duplicates_report
+        with self._lock:
+            return list(self._duplicates)

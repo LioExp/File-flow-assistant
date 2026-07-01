@@ -2,7 +2,10 @@ import json
 import os
 from pathlib import Path
 
-CONFIG_PATH = Path.home() / ".fileflow" / "watch_dirs.json"
+__all__ = ['FILEFLOW_HOME', 'load_dirs', 'save_dirs', 'add_dir', 'remove_dir']
+
+FILEFLOW_HOME = Path.home() / ".fileflow"
+CONFIG_PATH = FILEFLOW_HOME / "watch_dirs.json"
 
 DEFAULT_DIRS = [
     os.path.expanduser("~/Desktop"),
@@ -30,19 +33,21 @@ def save_dirs(directories):
 
 def add_dir(path):
     dirs = load_dirs()
-    expanded = os.path.expanduser(path)
-    if expanded not in dirs:
-        dirs.append(expanded)
-        save_dirs(dirs)
-        return True, expanded
-    return False, expanded
+    expanded = str(Path(path).expanduser().resolve())
+    if not os.path.isdir(expanded):
+        return False, expanded, "Path is not a directory or does not exist"
+    if expanded in dirs:
+        return False, expanded, "Already monitored"
+    dirs.append(expanded)
+    save_dirs(dirs)
+    return True, expanded, None
 
 
 def remove_dir(path):
     dirs = load_dirs()
-    expanded = os.path.expanduser(path)
+    expanded = str(Path(path).expanduser().resolve())
     if expanded in dirs:
         dirs.remove(expanded)
         save_dirs(dirs)
-        return True, expanded
-    return False, expanded
+        return True, expanded, None
+    return False, expanded, "Not found"

@@ -1,8 +1,9 @@
 from watchdog.events import FileSystemEventHandler
 import time
-import sys
 from trash import soft_delete
 from scanner import is_suspicious
+
+__all__ = ['FileFlowHandler']
 
 
 class FileFlowHandler(FileSystemEventHandler):
@@ -10,7 +11,7 @@ class FileFlowHandler(FileSystemEventHandler):
         self.logger = logger
         self.detector = detector
         self.last_event = {}
-        self._debounce_ms = 500 if sys.platform == 'win32' else 500
+        self._debounce_s = 0.5
 
     def on_created(self, event):
         if event.is_directory:
@@ -27,7 +28,7 @@ class FileFlowHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         last = self.last_event.get(event.src_path)
-        if last and last[0] == 'created' and (time.time() - last[1]) < 0.5:
+        if last and last[0] == 'created' and (time.time() - last[1]) < self._debounce_s:
             return
         self.logger.info("detected modified file:", path=event.src_path)
         self.detector.on_modified(event.src_path)

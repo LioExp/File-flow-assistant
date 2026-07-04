@@ -9,6 +9,9 @@ CONFIG_PATH = FILEFLOW_HOME / "watch_dirs.json"
 
 DEFAULT_DIRS = [
     os.path.expanduser("~/Desktop"),
+    os.path.expanduser("~/Documents/"),
+    os.path.expanduser("~/Downloads/"),
+    os.path.expanduser("~/models/")
 ]
 
 

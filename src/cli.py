@@ -32,6 +32,7 @@ app = typer.Typer(
     no_args_is_help=False,
     rich_markup_mode="rich",
 )
+
 console = Console()
 
 
@@ -109,20 +110,25 @@ def _show_dashboard():
     # Watched dirs
     if data['watch_directories']:
         console.print("  [dim]watching:[/dim]")
+
         for d in data['watch_directories'][:3]:
             console.print(f"    [dim]-[/dim] {d}")
+
         if dirs_count > 3:
             console.print(f"    [dim]- +{dirs_count - 3} more[/dim]")
         console.print()
 
     # Quick actions
     console.print("  [dim]---[/dim]")
+
     if not daemon_running:
         console.print("  [dim]>[/dim] [cyan]fileflow start --daemon[/cyan]  [dim]start monitoring[/dim]")
     else:
         console.print("  [dim]>[/dim] [cyan]fileflow stop[/cyan]  [dim]stop daemon[/dim]")
+
     if indexed == 0 and dirs_count > 0:
         console.print("  [dim]>[/dim] [cyan]fileflow scan[/cyan]  [dim]index files[/dim]")
+
     if trash_count > 0:
         console.print("  [dim]>[/dim] [cyan]fileflow trash[/cyan]  [dim]view trash[/dim]")
     console.print()

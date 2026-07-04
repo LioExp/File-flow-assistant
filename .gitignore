@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 fileflow.log
 fileflow.db
+fileflow.db-shm
+fileflow.db-wal
 logs/
 .DS_Store
 .vscode/

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "fileflow"
+version = "0.1.0"
+description = "Assistente inteligente de organizacao de arquivos com monitoramento em tempo real"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "anyio>=4.12",
+    "colorama>=0.4.6",
+    "mcp>=1.0,<2",
+    "pygtail>=0.11",
+    "rich>=13.0",
+    "tqdm>=4.67",
+    "typer>=0.9",
+    "watchdog>=2.1",
+    "watchfiles>=1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+fileflow = "src.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

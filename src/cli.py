@@ -1,7 +1,6 @@
 import typer
 import time
 import os
-import json
 import asyncio
 from pathlib import Path
 from rich.console import Console
@@ -40,7 +39,6 @@ console = Console()
 def _show_dashboard():
     """Show dashboard when no command is provided."""
     from rich.text import Text
-    from fileflow_mcp.config import load_mcp_config
     from config import FILEFLOW_HOME
 
     data = get_status_data()
@@ -69,9 +67,6 @@ def _show_dashboard():
         except (ProcessLookupError, ValueError):
             daemon_pid = None
 
-    mcp_config = load_mcp_config()
-    mcp_enabled = mcp_config.get('enabled', False)
-
     trash_count = 0
     if METADATA_FILE.exists():
         try:
@@ -99,13 +94,6 @@ def _show_dashboard():
     # Stats line
     stats = f"  [dim]{dirs_count} dirs  |  {indexed} files  |  {data['rules_count']} rules  |  {trash_count} trash[/dim]"
     console.print(stats)
-    console.print()
-
-    # MCP
-    if mcp_enabled:
-        console.print(f"  [green]mcp[/green]  [bold]active[/bold]")
-    else:
-        console.print(f"  [dim]mcp  off[/dim]")
     console.print()
 
     # Watched dirs
@@ -870,3 +858,8 @@ def service_uninstall():
     subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
 
     console.print("[green]FileFlow service uninstalled.[/green]")
+
+    if service_path_created():
+        service_path.unlink()
+
+

@@ -1,6 +1,6 @@
 # FileFlow
 
-> [Portugues](README.pt.md) | English
+> [Portugues](README.pt.md) | English🇺🇸
 
 Intelligent file organizer that monitors folders, detects duplicates, and keeps your files safe.
 
